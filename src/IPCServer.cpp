@@ -58,7 +58,7 @@ void IPCServer::run() {
     bind(server_fd, (struct sockaddr*)&addr, sizeof(addr));
     chmod(socketPath.c_str(), 0666);
      // Drop privileges to 'nobody' or specified user
-    dropPrivileges();
+    // dropPrivileges();
     listen(server_fd, 5);
 
     std::cout << "Listening on " << socketPath << std::endl;
