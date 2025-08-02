@@ -88,6 +88,10 @@ void IPCServer::run() {
         std::string action, type, hexdata;
         iss >> action >> type >> hexdata;
 
+        std::cout << "action: " << action << std::endl;
+        std::cout << "type: " << type << std::endl;
+        std::cout << "hexdata: " << hexdata << std::endl;
+
         if (action != "SIGN" && action != "GEN_SEED") {
             write(client_fd, "FAIL: Invalid action", 19);
             close(client_fd);
