@@ -1,3 +1,4 @@
+#include "Constants.h"
 #include "CryptoService.h"
 #include <iostream>
 #include <sodium.h>
@@ -66,6 +67,17 @@ std::vector<unsigned char> CryptoService::signData(const std::vector<unsigned ch
     return {};
 }
 
+std::vector<unsigned char> CryptoService::generateRandomSignedSeed() {
+    if (type == "secp256k1") {
+        const std::vector<unsigned char> constantSeed(
+            std::begin(SEED_INIT_DATA_32_BYTES),
+            std::end(SEED_INIT_DATA_32_BYTES)
+        );
+        std::vector<unsigned char> signedSeed = signData(constantSeed);
+        return std::vector<unsigned char>(signedSeed.begin(), signedSeed.begin() + 32);
+    }
+    return {};
+}
 void CryptoService::secureErase() {
     sodium_memzero(key.data(), key.size());
     munlock(key.data(), key.size());
