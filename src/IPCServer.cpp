@@ -1,3 +1,4 @@
+#include "Constants.h"
 #include "IPCServer.h"
 #include "CryptoService.h"
 #include <sys/socket.h>
@@ -67,7 +68,7 @@ void IPCServer::run() {
         int client_fd = accept(server_fd, nullptr, nullptr);
         if (client_fd < 0) continue;
 
-        char buffer[4096];
+        char buffer[MAX_IPC_CMD_BUFF_SIZE];
         ssize_t n = read(client_fd, buffer, sizeof(buffer));
         
         if (n <= 0) {
@@ -77,7 +78,7 @@ void IPCServer::run() {
         
         std::string cmd(buffer, buffer + n);
         
-        if (cmd.size() > 4096) {
+        if (cmd.size() > MAX_IPC_CMD_BUFF_SIZE) {
             write(client_fd, "FAIL: Command too long", 22);
             close(client_fd);
             continue;
@@ -87,19 +88,23 @@ void IPCServer::run() {
         std::string action, type, hexdata;
         iss >> action >> type >> hexdata;
 
-        if (action != "STORE_KEY" && action != "SIGN") {
+        std::cout << "action: " << action << std::endl;
+        std::cout << "type: " << type << std::endl;
+        std::cout << "hexdata: " << hexdata << std::endl;
+
+        if (action != "SIGN" && action != "GEN_SEED") {
             write(client_fd, "FAIL: Invalid action", 19);
             close(client_fd);
             continue;
         }
 
-        if (type.empty() || type.size() > 32) {
+        if (type.empty() || type.size() > MAX_IPC_CMD_TYPE_SIZE) {
             write(client_fd, "FAIL: Invalid type", 18);
             close(client_fd);
             continue;
         }
 
-        if (hexdata.empty() || hexdata.size() > 4096) {
+        if (hexdata.empty() || hexdata.size() > MAX_HEX_DATA_SIZE) {
             write(client_fd, "FAIL: Invalid hexdata", 21);
             close(client_fd);
             continue;
@@ -111,11 +116,7 @@ void IPCServer::run() {
             continue;
         }
 
-        if (action == "STORE_KEY") {
-            auto rawKey = hexToBytes(hexdata);
-            bool ok = keyManager.storePrivateKey(type, rawKey);
-            write(client_fd, ok ? "OK" : "FAIL", ok ? 2 : 4);
-        } else if (action == "SIGN") {
+        if (action == "SIGN") {
             try {
                 std::cout << "raw data size: " << hexdata.size() << " bytes\n";
 
@@ -155,6 +156,34 @@ void IPCServer::run() {
                 write(client_fd, e.what(), strlen(e.what()));
             }
             
+        } else if (action == "GEN_SEED") {
+            try {
+                std::cout << "loading pvt key..\n";
+
+                auto privKey = keyManager.loadPrivateKey(type);
+                std::cout << "pvt key" << (privKey.empty() ? " not found" : " loaded") << "\n";
+
+                if (privKey.empty()) {
+                    write(client_fd, "FAIL: Key not found", 19);
+                    close(client_fd);
+                    continue;
+                }
+                CryptoService crypto(privKey, type);
+                std::cout << "Generating seed...\n";
+                auto seed = crypto.generateRandomSignedSeed();
+                std::cout << "seed size: " << seed.size() << " bytes\n";
+                std::cout << "secure erasing key...\n";
+                crypto.secureErase();
+                std::cout << "key erased\n";
+
+                std::ostringstream oss;
+                for (unsigned char c : seed) oss << std::hex << std::setw(2) << std::setfill('0') << (int)c;
+                auto seedHex = oss.str();
+                write(client_fd, seedHex.c_str(), seedHex.size());
+            } catch (const std::exception& e) {
+                // send error back to client instead of crashing
+                write(client_fd, e.what(), strlen(e.what()));
+            }
         }
         close(client_fd);
     }
