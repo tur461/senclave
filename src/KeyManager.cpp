@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <sodium.h>
 #include <unistd.h>
+#include <cstring>
 
 static bool hasTPM() {
     #ifdef __APPLE__
