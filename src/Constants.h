@@ -1,5 +1,5 @@
+#include <string>
 #include <cstdint>
-
 #pragma once
 
 inline constexpr int MAX_HEX_DATA_SIZE = 4096;
@@ -11,3 +11,5 @@ inline constexpr uint8_t SEED_INIT_DATA_32_BYTES[] = {
     0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
     0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
 };
+inline constexpr const char* FALLBACK_SECRET = "something_unique_very_very_unique_SECRET";
+inline constexpr const char* DEFAULT_TMP_HANDLE = "0x81000001";

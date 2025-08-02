@@ -16,15 +16,15 @@ static bool hasTPM() {
     #endif
 }
 
-KeyManager::KeyManager(const std::string& dir, const std::string& handle)
-    : storageDir(dir), tpmHandle(handle) {
-    
-    std::error_code ec;
-    std::filesystem::create_directories(storageDir, ec);
-    if (ec) {
-        throw std::runtime_error("Failed to create storage directory: " + ec.message());
+KeyManager::KeyManager(const std::string& path, const std::string& tpmHandle)
+    : keyFilePath(path), tpmHandle(tpmHandle) {
+    if(hasTPM()) {
+        ensurePersistentKey();
     }
-    
+}
+
+KeyManager::KeyManager(const std::string& path)
+    : KeyManager::KeyManager(path, DEFAULT_TMP_HANDLE) {
     if(hasTPM()) {
         ensurePersistentKey();
     }
@@ -46,7 +46,11 @@ bool KeyManager::encryptWithTPM(const std::vector<unsigned char>& in, std::vecto
     if (!hasTPM()) {
         // Fallback: AES-256-GCM with libsodium
         unsigned char key[crypto_aead_aes256gcm_KEYBYTES];
-        crypto_aead_aes256gcm_keygen(key);
+        std::string secret = FALLBACK_SECRET;
+        crypto_generichash(key, sizeof key,
+                   reinterpret_cast<const unsigned char*>(secret.data()), secret.size(),
+                   nullptr, 0);
+        // crypto_aead_aes256gcm_keygen(key);
         unsigned char nonce[crypto_aead_aes256gcm_NPUBBYTES];
         randombytes_buf(nonce, sizeof nonce);
 
@@ -88,8 +92,13 @@ bool KeyManager::decryptWithTPM(const std::vector<unsigned char>& in, std::vecto
         unsigned long long clen = in.size() - crypto_aead_aes256gcm_NPUBBYTES;
 
         unsigned char key[crypto_aead_aes256gcm_KEYBYTES];
+        std::string secret = FALLBACK_SECRET;
+
+        crypto_generichash(key, sizeof key,
+                   reinterpret_cast<const unsigned char*>(secret.data()), secret.size(),
+                   nullptr, 0);
          // same issue: real deployment needs persistent key
-        crypto_aead_aes256gcm_keygen(key);
+        // crypto_aead_aes256gcm_keygen(key);
         out.resize(clen - crypto_aead_aes256gcm_ABYTES);
 
         unsigned long long decrypted_len;
@@ -109,19 +118,93 @@ bool KeyManager::decryptWithTPM(const std::vector<unsigned char>& in, std::vecto
     return encryptWithTPM(in, out);
 }
 
+
+// modify this to return the path to the key stored in the keymanager object
 std::string KeyManager::keyPath(const std::string& type) {
-    return storageDir + "/" + type + ".key";
+    return keyFilePath;
 }
 
-bool KeyManager::storePrivateKey(const std::string& type, const std::vector<unsigned char>& rawKey) {
-    std::vector<unsigned char> encrypted;
-    if (!encryptWithTPM(rawKey, encrypted)) return false;
+bool KeyManager::encryptPrivateKeyFile() {
+    std::string path = keyPath("");
 
-    std::ofstream file(keyPath(type), std::ios::binary);
-    file.write((char*)encrypted.data(), encrypted.size());
-    chmod(keyPath(type).c_str(), 0600);
+    // Open the file for reading
+    std::ifstream fileR(path, std::ios::binary);
+    if (!fileR.is_open()) {
+        std::cerr << "Failed to open file for reading: " << path << std::endl;
+        return false;
+    }
+
+    // Read the file into rawKey
+    std::vector<unsigned char> rawKey((std::istreambuf_iterator<char>(fileR)), {});
+    fileR.close();
+
+    // Encrypt
+    std::vector<unsigned char> encrypted;
+    if (!encryptWithTPM(rawKey, encrypted)) {
+        std::cerr << "Encryption failed\n";
+        return false;
+    }
+
+    // Write encrypted data back to same file
+    std::ofstream fileW(path, std::ios::binary | std::ios::trunc);
+    if (!fileW.is_open()) {
+        std::cerr << "Failed to open file for writing: " << path << std::endl;
+        return false;
+    }
+
+    fileW.write(reinterpret_cast<const char*>(encrypted.data()), encrypted.size());
+    fileW.close();
+
+    // Set file permissions
+    if (chmod(path.c_str(), 0600) != 0) {
+        perror("chmod failed");
+        return false;
+    }
+
     return true;
 }
+
+bool KeyManager::decryptPrivateKeyFile() {
+    std::string path = keyPath("");
+
+    // Open the file for reading
+    std::ifstream fileR(path, std::ios::binary);
+    if (!fileR.is_open()) {
+        std::cerr << "Failed to open file for reading: " << path << std::endl;
+        return false;
+    }
+
+    // Read the file into encrypted buffer
+    std::vector<unsigned char> encrypted((std::istreambuf_iterator<char>(fileR)), {});
+    fileR.close();
+
+    // Decrypt
+    std::vector<unsigned char> decrypted;
+    if (!decryptWithTPM(encrypted, decrypted)) {
+        std::cerr << "Decryption failed\n";
+        return false;
+    }
+
+    // Write decrypted data back to same file
+    std::ofstream fileW(path, std::ios::binary | std::ios::trunc);
+    if (!fileW.is_open()) {
+        std::cerr << "Failed to open file for writing: " << path << std::endl;
+        return false;
+    }
+
+    fileW.write(reinterpret_cast<const char*>(decrypted.data()), decrypted.size());
+    fileW.close();
+
+    // Set secure permissions
+    if (chmod(path.c_str(), 0600) != 0) {
+        perror("chmod failed");
+        return false;
+    }
+
+    return true;
+}
+
+
 
 std::vector<unsigned char> KeyManager::loadPrivateKey(const std::string& type) {
     std::cout << "Loading private key of type: " << type << std::endl;

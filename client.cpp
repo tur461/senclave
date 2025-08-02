@@ -5,7 +5,7 @@
 
 int main(int argc, char* argv[]) {
     if (argc < 4) {
-        std::cerr << "Usage: client <STORE_KEY|SIGN> <type> <hexdata>\n";
+        std::cerr << "Usage: client <GEN_SEED|SIGN> <type> <hexdata>\n";
         return 1;
     }
 

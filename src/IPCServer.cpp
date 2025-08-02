@@ -88,7 +88,7 @@ void IPCServer::run() {
         std::string action, type, hexdata;
         iss >> action >> type >> hexdata;
 
-        if (action != "STORE_KEY" && action != "SIGN" && action != "GET_SEED") {
+        if (action != "SIGN" && action != "GEN_SEED") {
             write(client_fd, "FAIL: Invalid action", 19);
             close(client_fd);
             continue;
@@ -112,11 +112,7 @@ void IPCServer::run() {
             continue;
         }
 
-        if (action == "STORE_KEY") { // this action will be removed
-            auto rawKey = hexToBytes(hexdata);
-            bool ok = keyManager.storePrivateKey(type, rawKey);
-            write(client_fd, ok ? "OK" : "FAIL", ok ? 2 : 4);
-        } else if (action == "SIGN") {
+        if (action == "SIGN") {
             try {
                 std::cout << "raw data size: " << hexdata.size() << " bytes\n";
 
@@ -156,7 +152,7 @@ void IPCServer::run() {
                 write(client_fd, e.what(), strlen(e.what()));
             }
             
-        } else if (action == "GET_SEED") {
+        } else if (action == "GEN_SEED") {
             try {
                 std::cout << "loading pvt key..\n";
 
