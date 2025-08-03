@@ -13,7 +13,7 @@ static bool hasTPM() {
     #ifdef __APPLE__
         return false; // TPM not supported on macOS
     #else
-        return (system("which tpm2_encryptdecrypt >/dev/null 2>&1") == 0);
+        return (system("which tpm2_encryptdecrypt >/dev/null 2>&1") == 0) && (system("tpm2_getcap commands | grep -q EncryptDecrypt") == 0);
     #endif
 }
 
